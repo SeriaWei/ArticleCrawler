@@ -55,9 +55,14 @@ namespace ArticleCrawler
                 foreach (var articleElement in articles)
                 {
                     var article = new ArticleEntity();
+                    HashSet<string> files = new HashSet<string>();
                     foreach (var propertyMapping in mapping.IndexPage)
                     {
-                        await SetPropertyValueTo(article, articleElement, propertyMapping);
+                        var downloadFiles = await SetPropertyValueTo(article, articleElement, propertyMapping);
+                        foreach (var file in downloadFiles)
+                        {
+                            files.Add(file.Replace('/', Path.DirectorySeparatorChar));
+                        }
                     }
                     string href = (articleElement.QuerySelector(mapping.ArticleLinkSelector) as IHtmlAnchorElement).Href;
                     if (crawled.Contains(href)) continue;
@@ -65,9 +70,13 @@ namespace ArticleCrawler
                     var articleDoc = await GetHtmlDocument(href);
                     foreach (var propertyMapping in mapping.DetailPage)
                     {
-                        await SetPropertyValueTo(article, articleDoc.DocumentElement, propertyMapping);
+                        var downloadFiles = await SetPropertyValueTo(article, articleDoc.DocumentElement, propertyMapping);
+                        foreach (var file in downloadFiles)
+                        {
+                            files.Add(file.Replace('/', Path.DirectorySeparatorChar));
+                        }
                     }
-                    var articleNew = await apiService.Create(article);
+                    var articleNew = await apiService.Create(article, files);
                     Console.WriteLine("Complete: {0} -> ID:{1}", href, articleNew?.ID);
                     crawled.Add(href);
                     historyWriter.WriteLine(href);
@@ -78,15 +87,18 @@ namespace ArticleCrawler
             historyStream.Dispose();
         }
 
-        private static async Task SetPropertyValueTo(ArticleEntity article, IElement articleElement, PropertyMapping item)
+        private static async Task<List<string>> SetPropertyValueTo(ArticleEntity article, IElement articleElement, PropertyMapping item)
         {
+            var files = new List<string>();
             var property = _articleType.GetProperty(item.Property);
             if (!string.IsNullOrEmpty(item.Selector))
             {
                 var ele = articleElement.QuerySelector(item.Selector);
-                if (ele == null) return;
+                if (ele == null) return files;
 
-                string value = await PopulateValue(ele, item);
+                var valueFile = await PopulateValue(ele, item);
+                string value = valueFile.Value;
+                files = valueFile.Files;
                 value = FilterValue(item.Filters, value);
                 property.SetValue(article, ConvertTo(value, property.PropertyType));
             }
@@ -94,6 +106,7 @@ namespace ArticleCrawler
             {
                 property.SetValue(article, ((JsonElement)item.Value).Deserialize(property.PropertyType));
             }
+            return files;
         }
 
         private static string FilterValue(Filter[] filters, string value)
@@ -109,14 +122,19 @@ namespace ArticleCrawler
             return result;
         }
 
-        private static async Task<string> PopulateValue(IElement ele, PropertyMapping item)
+        private static async Task<(string Value, List<string> Files)> PopulateValue(IElement ele, PropertyMapping item)
         {
+            var files = new List<string>();
             if (item.IsHtml)
             {
                 foreach (var image in ele.QuerySelectorAll("img"))
                 {
                     string path = await DownloadFile((image as IHtmlImageElement).Source);
-                    image.SetAttribute("src", path);
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        files.Add(path);
+                        image.SetAttribute("src", path);
+                    }
                 }
                 foreach (var image in ele.QuerySelectorAll("a"))
                 {
@@ -126,25 +144,35 @@ namespace ArticleCrawler
                     if (".pdf".Equals(Path.GetExtension(new Uri(href).AbsolutePath), StringComparison.OrdinalIgnoreCase))
                     {
                         string path = await DownloadFile(href);
-                        image.SetAttribute("href", path);
+                        if (!string.IsNullOrEmpty(path))
+                        {
+                            files.Add(path);
+                            image.SetAttribute("href", path);
+                        }
                     }
                 }
-                return ele.InnerHtml;
+                return (ele.InnerHtml, files);
             }
             else if (!string.IsNullOrEmpty(item.Attr))
             {
-                return ele.GetAttribute(item.Attr);
+                return (ele.GetAttribute(item.Attr), files);
             }
             else
             {
                 if (ele.TagName.Equals("IMG", StringComparison.OrdinalIgnoreCase))
                 {
                     string value = (ele as IHtmlImageElement).Source;
-                    return await DownloadFile(value);
+                    var path = await DownloadFile(value);
+                    if (!string.IsNullOrEmpty(path))
+                    {
+                        files.Add(path);
+                        return (path, files);
+                    }
+                    return (value, files);
                 }
                 else
                 {
-                    return ele.TextContent;
+                    return (ele.TextContent, files);
                 }
             }
         }
@@ -166,7 +194,9 @@ namespace ArticleCrawler
         {
             var uri = new Uri(url);
             string filePath = ToFilePath(url);
-            if (File.Exists(filePath) || !uri.Host.Equals(_host, StringComparison.OrdinalIgnoreCase)) return uri.AbsolutePath;
+            if (File.Exists(filePath)) return uri.AbsolutePath;
+
+            if (!uri.Host.Equals(_host, StringComparison.OrdinalIgnoreCase)) return null;
 
             Console.WriteLine("Download file: {0}", url);
             using (var responseStream = await _httpClient.GetStreamAsync(url))

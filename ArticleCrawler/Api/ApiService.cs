@@ -22,7 +22,7 @@ namespace ArticleCrawler.Api
             _httpClient.BaseAddress = new Uri(_configOption.Host);
         }
 
-        public async Task<ArticleEntity> Create(ArticleEntity article)
+        public async Task<ArticleEntity> Create(ArticleEntity article, HashSet<string> files)
         {
             if (_authToken == null || _authToken.Expires < DateTime.UtcNow)
             {
@@ -32,7 +32,14 @@ namespace ArticleCrawler.Api
                 string authJson = await response.Content.ReadAsStringAsync();
                 _authToken = JsonSerializer.Deserialize<AuthToken>(authJson, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             }
-            string articleJson = JsonSerializer.Serialize(article, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+            var articleContext = new ArticleApiRequestContext();
+            articleContext.Article = article;
+            articleContext.Files = new List<ApiFile>();
+            foreach (var item in files)
+            {
+                articleContext.Files.Add(new ApiFile { Path = item, FileBytes = File.ReadAllBytes("Files" + item) });
+            }
+            string articleJson = JsonSerializer.Serialize(articleContext, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
             var requestMessage = new HttpRequestMessage(HttpMethod.Post, "/api/article/create");
             requestMessage.Content = new StringContent(articleJson, Encoding.UTF8, "application/json");
             requestMessage.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", _authToken.Token);
