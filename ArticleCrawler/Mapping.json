@@ -1,0 +1,105 @@
+{
+  "ArticleItemsSelector": ".item",
+  "ArticleLinkSelector": "div > h4 > a",
+  "IndexPage": [
+    {
+      "Property": "Title",
+      "Selector": "div > h4 > a"
+    },
+    {
+      "Property": "Summary",
+      "Selector": "div > p",
+      "Filters": [
+        {
+          "Name": "Replace",
+          "Args": [
+            "[查看详细]",
+            ""
+          ]
+        },
+        {
+          "Name": "Trim"
+        }
+      ]
+    },
+    {
+      "Property": "Url",
+      "Selector": "div > h4 > a",
+      "Attr": "href",
+      "Filters": [
+        {
+          "Name": "Substring",
+          "Args": [
+            "6"
+          ]
+        },
+        {
+          "Name": "Replace",
+          "Args": [
+            "/content.html",
+            ""
+          ]
+        },
+        {
+          "Name": "Replace",
+          "Args": [
+            "/",
+            "-"
+          ]
+        }
+      ]
+    },
+    {
+      "Property": "ImageThumbUrl",
+      "Selector": "div > a > img"
+    },
+    {
+      "Property": "PublishDate",
+      "Selector": "div > h4 > span",
+      "Filters": [
+        {
+          "Name": "Trim"
+        },
+        {
+          "Name": "Substring",
+          "Args": [
+            "5"
+          ]
+        }
+      ]
+    },
+    {
+      "Property": "ArticleTypeID",
+      "Value": 2
+    },
+    {
+      "Property": "IsPublish",
+      "Value": true
+    },
+    {
+      "Property": "Status",
+      "Value": 1
+    },
+    {
+      "Property": "CultureID",
+      "Value": 1
+    }
+  ],
+  "DetailPage": [
+    {
+      "Property": "MetaKeyWords",
+      "Selector": "meta[name=keywords]",
+      "Attr": "content"
+    },
+    {
+      "Property": "MetaDescription",
+      "Selector": "meta[name=description]",
+      "Attr": "content"
+    },
+    {
+      "Property": "ArticleContent",
+      "Selector": "#articleContent",
+      "IsHtml": true
+    }
+  ]
+}
